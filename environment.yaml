@@ -1,0 +1,11 @@
+name: chiron
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - black-jupyter
+  - isort
+  - pip
+  - pip:
+      - commitizen
+  - pre-commit
