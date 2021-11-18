@@ -1,2 +1,3 @@
+*.pyc
 data/brain-tumor-public-dataset/*
 !data/brain-tumor-public-dataset/download.sh

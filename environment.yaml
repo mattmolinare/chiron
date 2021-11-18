@@ -5,7 +5,15 @@ channels:
 dependencies:
   - black-jupyter
   - isort
+  - notebook
+  - numpy
+  - pandas
+  - pillow
   - pip
+  - pre-commit
+  - pylama
+  - pylint
+  - tensorflow-gpu
+  - tensorflow-hub
   - pip:
       - commitizen
-  - pre-commit
