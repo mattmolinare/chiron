@@ -20,7 +20,7 @@ def save_tfrecord(path, generator):
     Parameters
     ----------
     path : str
-        Path to TFRecords file.
+        Path to TFRecord file.
 
     generator : generator
         Image data generator.
@@ -58,7 +58,7 @@ def load_tfrecord(paths):
     Parameters
     ----------
     paths : str or list of str
-        Paths to TFRecords files.
+        Paths to TFRecord files.
 
     Returns
     -------
