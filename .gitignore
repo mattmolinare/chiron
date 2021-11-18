@@ -1,2 +1,2 @@
-data/*
-!data/download.sh
+data/brain-tumor-public-dataset/*
+!data/brain-tumor-public-dataset/download.sh
