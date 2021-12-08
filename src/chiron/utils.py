@@ -1,6 +1,13 @@
 import tensorflow as tf
+import yaml
 
-__all__ = ["convert_to_tensor", "HashTable", "set_visible_gpus"]
+__all__ = [
+    "convert_to_tensor",
+    "HashTable",
+    "set_visible_gpus",
+    "load_yaml",
+    "save_yaml",
+]
 
 
 def set_visible_gpus(*indices):
@@ -55,3 +62,15 @@ class HashTable(tf.lookup.StaticHashTable):
             with tf.control_dependencies([assert_op]):
                 values = tf.identity(values)
         return values
+
+
+def load_yaml(filename):
+    """Load data from YAML file."""
+    with open(filename, "r") as file:
+        return yaml.safe_load(file)
+
+
+def save_yaml(filename, data):
+    """Save data to YAML file."""
+    with open(filename, "w") as file:
+        yaml.safe_dump(data, stream=file, default_flow_style=False)
