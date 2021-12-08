@@ -5,6 +5,7 @@ channels:
 dependencies:
   - black-jupyter
   - isort
+  - matplotlib
   - notebook
   - numpy
   - pandas
