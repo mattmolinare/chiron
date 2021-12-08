@@ -13,20 +13,20 @@ def _int64_feature(value):
     return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
 
 
-def save_tfrecord(path, generator):
+def save_tfrecord(filename, generator):
     """
     Save image data to a TFRecord file.
 
     Parameters
     ----------
-    path : str
-        Path to TFRecord file.
+    filename : str
+        TFRecord file.
 
     generator : generator
         Image data generator.
 
     """
-    with tf.io.TFRecordWriter(path) as writer:
+    with tf.io.TFRecordWriter(filename) as writer:
         for image, label in generator:
             feature = {
                 "image": _bytes_feature([image.tobytes()]),
@@ -52,13 +52,13 @@ def parser(serialized):
     return image, parsed["label"]
 
 
-def load_tfrecord(paths):
+def load_tfrecord(filenames):
     """Load TFRecord file and parse data.
 
     Parameters
     ----------
-    paths : str or list of str
-        Paths to TFRecord files.
+    filenames : str or list of str
+        TFRecord files.
 
     Returns
     -------
@@ -66,7 +66,7 @@ def load_tfrecord(paths):
         Dataset.
 
     """
-    dataset = tf.data.TFRecordDataset(paths).map(parser)
+    dataset = tf.data.TFRecordDataset(filenames).map(parser)
     for image, _ in dataset.take(1):
         pass
     shape_setter = preprocessing.ShapeSetter(image.shape)
