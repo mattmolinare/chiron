@@ -68,6 +68,6 @@ def load_tfrecord(filenames):
     """
     dataset = tf.data.TFRecordDataset(filenames).map(parser)
     for image, _ in dataset.take(1):
-        pass
-    shape_setter = preprocessing.ShapeSetter(image.shape)
-    return dataset.map(shape_setter)
+        shape_setter = preprocessing.ShapeSetter(image.shape)
+        dataset = dataset.map(shape_setter)
+    return dataset
