@@ -1,7 +1,7 @@
 name: chiron
 channels:
-  - conda-forge
   - defaults
+  - conda-forge
 dependencies:
   - black-jupyter
   - isort
