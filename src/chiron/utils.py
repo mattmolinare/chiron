@@ -18,13 +18,32 @@ def set_visible_gpus(*indices):
     *indices
         GPU device indices.
 
+    References
+    ----------
+    https://www.tensorflow.org/api_docs/python/tf/config/set_visible_devices
+
     """
-    physical_devices = tf.config.list_physical_devices(device_type="GPU")
-    visible_devices = [physical_devices[index] for index in indices]
+    physical_devices = tf.config.list_physical_devices("GPU")
     try:
-        tf.config.set_visible_devices(visible_devices, device_type="GPU")
+        tf.config.set_visible_devices(
+            [physical_devices[index] for index in indices], "GPU"
+        )
     except RuntimeError:
         pass
+
+
+def get_distribution_strategy():
+    """Get distribution strategy for multiple GPU capability.
+
+    References
+    ----------
+    https://www.tensorflow.org/guide/distributed_training
+    """
+    logical_devices = tf.config.list_logical_devices("GPU")
+    if len(logical_devices) > 1:
+        return tf.distribute.MirroredStrategy()
+    else:
+        return tf.distribute.get_strategy()
 
 
 def convert_to_tensor(value, dtype=None):
@@ -35,7 +54,8 @@ def convert_to_tensor(value, dtype=None):
     """
     if isinstance(value, tf.Tensor):
         return value if dtype is None else tf.cast(value, dtype)
-    return tf.convert_to_tensor(value, dtype=dtype)
+    else:
+        return tf.convert_to_tensor(value, dtype=dtype)
 
 
 class HashTable(tf.lookup.StaticHashTable):
