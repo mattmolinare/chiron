@@ -1,12 +1,17 @@
+import json
+
 import tensorflow as tf
 import yaml
 
 __all__ = [
+    "set_visible_gpus",
+    "get_distribution_strategy",
     "convert_to_tensor",
     "HashTable",
-    "set_visible_gpus",
-    "load_yaml",
     "save_yaml",
+    "load_yaml",
+    "save_model",
+    "load_model",
 ]
 
 
@@ -84,13 +89,25 @@ class HashTable(tf.lookup.StaticHashTable):
         return values
 
 
+def save_yaml(filename, data):
+    """Save data to YAML file."""
+    with open(filename, "w") as file:
+        yaml.safe_dump(data, file, default_flow_style=False)
+
+
 def load_yaml(filename):
     """Load data from YAML file."""
     with open(filename, "r") as file:
         return yaml.safe_load(file)
 
 
-def save_yaml(filename, data):
-    """Save data to YAML file."""
+def save_model(filename, model):
+    """Save model configuration to JSON file."""
     with open(filename, "w") as file:
-        yaml.safe_dump(data, stream=file, default_flow_style=False)
+        json.dump(json.loads(model.to_json()), file, indent=2)
+
+
+def load_model(filename):
+    """Load model configuration from JSON file."""
+    with open(filename, "r") as file:
+        return tf.keras.models.model_from_json(file.read())

@@ -5,20 +5,56 @@ import tensorflow as tf
 from . import utils
 
 __all__ = [
+    "LabelMapper",
+    "OneHotEncoder",
     "IdentityWhitener",
-    "LabelEncoder",
+    "StandardWhitener",
     "PerBatchStandardWhitener",
     "PerImageStandardWhitener",
     "Resizer",
+    "Repeater",
     "ShapeSetter",
-    "StandardWhitener",
 ]
 
 
-class LabelEncoder:
-    """Label encoder."""
+class TargetTransformer(abc.ABC):
+    """Target transformer.
 
-    def __init__(self, label_map, num_classes, default_class_index=None):
+    Parameters
+    ----------
+    elementwise : bool, optional
+        If `True`, transform each element in the target data structure. Default
+        is `False`.
+
+    """
+
+    def __init__(self, elementwise=False):
+        self.elementwise = elementwise
+
+    @abc.abstractmethod
+    def _transform_op(self, targets):
+        pass
+
+    @tf.function
+    def __call__(self, *args):
+        """Transform target vectors.
+
+        Parameters are unpacked as `*extra_args, targets = args`. If not empty,
+        `extra_args` are passed through.
+        """
+        *extra_args, targets = args
+        if self.elementwise:
+            targets = tf.nest.map_structure(self._transform_op, targets)
+        else:
+            targets = self._transform_op(targets)
+        return (*extra_args, targets) if extra_args else targets
+
+
+class LabelMapper(TargetTransformer):
+    """Map labels to class indices."""
+
+    def __init__(self, label_map, default_class_index=None, elementwise=False):
+        super().__init__(elementwise=elementwise)
         if default_class_index is None:
             default_class_index = -1
             assert_in_table = True
@@ -27,14 +63,20 @@ class LabelEncoder:
         self.label_map = utils.HashTable.from_dict(
             label_map, default_class_index, assert_in_table=assert_in_table
         )
+
+    def _transform_op(self, targets):
+        return self.label_map.lookup(targets)
+
+
+class OneHotEncoder(TargetTransformer):
+    """One-hot encode class indices."""
+
+    def __init__(self, num_classes, elementwise=False):
+        super().__init__(elementwise=elementwise)
         self.num_classes = num_classes
 
-    @tf.autograph.experimental.do_not_convert
-    def __call__(self, image, labels):
-        """One-hot encode labels."""
-        class_indices = self.label_map[labels]
-        labels = tf.one_hot(class_indices, self.num_classes)
-        return image, labels
+    def _transform_op(self, target):
+        return tf.one_hot(target, self.num_classes)
 
 
 class ImageTransformer(abc.ABC):
@@ -44,24 +86,13 @@ class ImageTransformer(abc.ABC):
     def _transform_op(self, images):
         pass
 
-    def __call__(self, images, *args):
+    def __call__(self, images, *extra_args):
         """Transform image data.
 
-        Additional parameters `args` are passed through.
+        Additional parameters `extra_args` are passed through.
         """
         images = self._transform_op(images)
-        return (images, *args) if args else images
-
-
-class ShapeSetter(ImageTransformer):
-    """Image shape setter."""
-
-    def __init__(self, shape):
-        self.shape = shape
-
-    def _transform_op(self, images):
-        images.set_shape(self.shape)
-        return images
+        return (images, *extra_args) if extra_args else images
 
 
 class BaseWhitener(ImageTransformer):
@@ -124,3 +155,24 @@ class Resizer(ImageTransformer):
 
     def _transform_op(self, images):
         return tf.image.resize(images, self.size)
+
+
+class Repeater(ImageTransformer):
+    """Image repeater."""
+
+    def __init__(self, repeats, axis=-1):
+        self.repeats = repeats
+        self.axis = axis
+
+    def _transform_op(self, images):
+        return tf.repeat(images, self.repeats, axis=self.axis)
+
+
+class ShapeSetter(ImageTransformer):
+    """Image shape setter."""
+
+    def __init__(self, shape):
+        self.shape = shape
+
+    def _transform_op(self, images):
+        return tf.ensure_shape(images, self.shape)
