@@ -152,7 +152,7 @@ class PerImageStandardWhitener(StandardWhitener):
 def min_max_scale(x, axes=None):
     axes = _get_axes(x, axes)
     x = x - tf.reduce_min(x, axis=axes, keepdims=True)
-    return tf.math.divide_no_nan(x, tf.reduce_max(x, axes=axes, keepdims=True))
+    return tf.math.divide_no_nan(x, tf.reduce_max(x, axis=axes, keepdims=True))
 
 
 class MinMaxWhitener(BaseWhitener):
