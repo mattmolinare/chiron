@@ -114,13 +114,15 @@ class IdentityWhitener(BaseWhitener):
         return images
 
 
+def _get_axes(x, axes):
+    return tf.range(tf.rank(x)) if axes is None else axes
+
+
 def standardize(x, axes=None):
     """Standardize data along given axes."""
-    if axes is None:
-        axes = tf.range(tf.rank(x))
+    axes = _get_axes(x, axes)
     x_mean, x_var = tf.nn.moments(x, axes, keepdims=True)
-    x_var = tf.maximum(x_var, 0.0)  # Clamp to zero
-    return tf.math.divide_no_nan(x - x_mean, tf.sqrt(x_var))
+    return tf.math.divide_no_nan(x - x_mean, tf.sqrt(tf.maximum(x_var, 0.0)))
 
 
 class StandardWhitener(BaseWhitener):
@@ -145,6 +147,29 @@ class PerImageStandardWhitener(StandardWhitener):
 
     def __init__(self):
         super().__init__(axes=[1, 2])
+
+
+def min_max_scale(x, axes=None):
+    axes = _get_axes(x, axes)
+    x = x - tf.reduce_min(x, axis=axes, keepdims=True)
+    return tf.math.divide_no_nan(x, tf.reduce_max(x, axes=axes, keepdims=True))
+
+
+class MinMaxWhitener(BaseWhitener):
+    """Min-max whitener."""
+
+    def __init__(self, axes=None):
+        self.axes = axes
+
+    def _whitening_op(self, images):
+        return min_max_scale(images, axes=self.axes)
+
+
+class Discretizer(MinMaxWhitener):
+    """0 to 255 discretizer."""
+
+    def _whitening_op(self, images):
+        return tf.round(super()._whitening_op(images) * 255)
 
 
 class Resizer(ImageTransformer):
