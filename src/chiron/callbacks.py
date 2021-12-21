@@ -94,9 +94,7 @@ class LearningRateMixin(CustomLogsMixin):
 
 class NamedLogsMixin(CustomLogsMixin):
     def __init__(self, include_names=None, exclude_names=None, **kwargs):
-
         super().__init__(**kwargs)
-
         self.include_names = include_names
         self.exclude_names = exclude_names
 
@@ -118,8 +116,7 @@ class NamedLogsMixin(CustomLogsMixin):
 class TensorBoardLearningRate(
     LearningRateMixin, tf.keras.callbacks.TensorBoard
 ):
-    def __init__(self, **kwargs):
-
+    def __init__(self, *args, **kwargs):
         kwargs.update(
             {
                 "histogram_freq": 0,
@@ -129,8 +126,7 @@ class TensorBoardLearningRate(
                 "embeddings_metadata": None,
             }
         )
-
-        super().__init__(**kwargs)
+        super().__init__(*args, **kwargs)
 
 
 class TensorBoardNamedLogs(NamedLogsMixin, tf.keras.callbacks.TensorBoard):
@@ -148,9 +144,7 @@ class SilentTerminateOnNaN(tf.keras.callbacks.Callback):
     """
 
     def __init__(self, monitor="loss"):
-
         super().__init__()
-
         self.monitor = monitor
 
     def on_batch_end(self, batch, logs=None):
@@ -179,28 +173,19 @@ class LearningRateFinder(tf.keras.callbacks.Callback):
         smoothing=0.9,
         mode="auto",
     ):
-
         super().__init__()
-
         self.monitor = monitor
         self.base_lr = base_lr
         self.max_lr = max_lr
         self.max_steps = max_steps
         self.smoothing = smoothing
         self.mode = mode
-
         self.minimize = (
             self.mode == "min"
             or self.mode == "auto"
             and "loss" in self.monitor
         )
         self.monitor_op = np.less if self.minimize else np.greater
-
-        self.step = None
-        self.lr = None
-        self.mean_value = None
-        self.best_value = None
-        self.history = None
 
     def get_lr(self, step):
         if step > self.max_steps:
@@ -253,16 +238,10 @@ class CLR(tf.keras.callbacks.Callback, abc.ABC):
     """
 
     def __init__(self, base_lr, max_lr, step_size):
-
         super().__init__()
-
         self.base_lr = base_lr
         self.max_lr = max_lr
         self.step_size = step_size
-
-        self.step = None
-        self.cycle = None
-        self.lr = None
 
     def get_cycle(self, step):
         return int(1 + step / (2 * self.step_size))
