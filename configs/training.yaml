@@ -1,16 +1,13 @@
 image_size: [224, 224]
-num_epochs: 40
+num_epochs: 100
 batch_size_per_device: 32
-shuffle_buffer_size: null
-base_lr: 1.0e-6
-max_lr: 1.0e-4
-clr_step_size: 2500
-grad_clip: 1.0
+shuffle_buffer_size: 256
+lr: 0.0001
+reduce_lr_patience: 4
 early_stopping_patience: 16
-dropout_rate: 0.2
-reg_scale: 0.01
+reg_scale: null
 run_eagerly: False
-save_interval: 5
+save_period: 5
 classes:
   - label: meningioma
     orig_labels:

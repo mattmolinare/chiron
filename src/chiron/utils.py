@@ -12,6 +12,7 @@ __all__ = [
     "load_yaml",
     "save_model",
     "load_model",
+    "get_weights_path",
 ]
 
 
@@ -111,3 +112,7 @@ def load_model(filename):
     """Load model configuration from JSON file."""
     with open(filename, "r") as file:
         return tf.keras.models.model_from_json(file.read())
+
+
+def get_weights_path():
+    return "epoch-{epoch:04d}"

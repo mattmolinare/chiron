@@ -2,9 +2,6 @@ import argparse
 import os
 
 import tensorflow as tf
-from tensorflow.python.training.tracking.base import (
-    no_automatic_dependency_tracking,
-)
 
 import chiron
 
@@ -51,12 +48,9 @@ def parse_config_file(filename):
     return config
 
 
-def prepare_dataset(
-    dataset, label_mapper, one_hot_encoder, image_size, batch_size, whitener
-):
+def prepare_dataset(dataset, label_mapper, image_size, batch_size, whitener):
     return (
         dataset.map(label_mapper, num_parallel_calls=tf.data.AUTOTUNE)
-        .map(one_hot_encoder, num_parallel_calls=tf.data.AUTOTUNE)
         .map(chiron.Resizer(image_size), num_parallel_calls=tf.data.AUTOTUNE)
         .map(chiron.Repeater(3, axis=2), num_parallel_calls=tf.data.AUTOTUNE)
         .map(
@@ -65,162 +59,112 @@ def prepare_dataset(
         )
         .batch(batch_size)
         .map(whitener, num_parallel_calls=tf.data.AUTOTUNE)
-        .cache()
         .prefetch(tf.data.AUTOTUNE)
     )
 
 
 def main():
 
-    # Parse command line arguments.
     args = parse_args()
 
-    # Make checkpoint/log directories.
     output_dir = os.path.abspath(args.output_dir)
+
     log_dir = os.path.join(output_dir, "log")
     if not os.path.isdir(log_dir):
         os.makedirs(log_dir)
+
     weights_dir = os.path.join(output_dir, "weights")
     if not os.path.isdir(weights_dir):
         os.makedirs(weights_dir)
 
-    # Set GPU device visibility.
     devices = args.devices
     if devices is not None:
         chiron.set_visible_gpus(*devices)
 
-    # Parse configuration file.
     config = parse_config_file(args.config_file)
 
-    # Save configuration file.
     chiron.save_yaml(os.path.join(output_dir, "config.yaml"), config)
 
-    # Read training dataset from TFRecord file.
-    train_dataset = chiron.load_tfrecord(args.train_file)
+    reg_scale = config.get("reg_scale")
+    regularizer = (
+        None if reg_scale is None else tf.keras.regularizers.l2(reg_scale)
+    )
 
-    # Define regularizer.
-    regularizer = tf.keras.regularizers.l2(config["reg_scale"])
-
-    # Get input shape.
     image_size = tf.TensorShape(config["image_size"])
     input_shape = [None] + image_size + [3]
 
-    # Get distribution strategy.
     strategy = chiron.get_distribution_strategy()
 
     with strategy.scope():
 
-        # Define model.
         model = chiron.get_model(
-            config["num_classes"],
-            dropout_rate=config["dropout_rate"],
-            regularizer=regularizer,
+            config["num_classes"], regularizer=regularizer
         )
 
-        # Save model configuration.
         chiron.save_model(os.path.join(output_dir, "model.json"), model)
 
-        # Define optimizer.
-        optimizer_kwargs = {}
-        if config["grad_clip"] is not None:
-            optimizer_kwargs["clipvalue"] = config["grad_clip"]
-        optimizer = tf.keras.optimizers.RMSprop(
-            learning_rate=config["base_lr"], **optimizer_kwargs
-        )
-
-        # Define loss.
-        loss = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
-
-        # Define metrics.
-        metrics = [
-            tf.keras.metrics.CategoricalAccuracy(),
-            # tf.keras.metrics.AUC(curve="ROC", multi_label=True),
-            # tf.keras.metrics.AUC(curve="PR", multi_label=True),
-        ]
-
-        # Compile model.
         model.compile(
-            optimizer=optimizer,
-            loss=loss,
-            metrics=metrics,
+            optimizer=tf.keras.optimizers.Adam(learning_rate=config["lr"]),
+            loss=tf.keras.losses.SparseCategoricalCrossentropy(
+                from_logits=True
+            ),
+            metrics=["accuracy"],
             run_eagerly=config["run_eagerly"],
         )
 
-        # Build model.
         model.build(input_shape)
 
-    # Define label mapper.
-    label_mapper = chiron.LabelMapper(config["label_map"])
+    train_dataset = chiron.load_tfrecord(args.train_file)
 
-    # Define one-hot encoder.
-    one_hot_encoder = chiron.OneHotEncoder(config["num_classes"])
-
-    # Get global batch size.
-    global_batch_size = (
-        config["batch_size_per_device"] * strategy.num_replicas_in_sync
-    )
-
-    # Define image whitener.
-    whitener = chiron.PerBatchStandardWhitener()
-
-    # Shuffle training data.
     shuffle_buffer_size = config["shuffle_buffer_size"]
     if shuffle_buffer_size is not None:
         train_dataset = train_dataset.shuffle(
             shuffle_buffer_size, seed=config.get("shuffle_seed")
         )
 
-    # Prepare training data.
+    label_mapper = chiron.LabelMapper(config["label_map"])
+
+    global_batch_size = (
+        config["batch_size_per_device"] * strategy.num_replicas_in_sync
+    )
+
+    whitener = chiron.PerImageStandardWhitener()
+
     train_dataset = prepare_dataset(
-        train_dataset,
-        label_mapper,
-        one_hot_encoder,
-        image_size,
-        global_batch_size,
-        whitener,
+        train_dataset, label_mapper, image_size, global_batch_size, whitener
     )
 
     if args.val_file is not None:
-
-        # Read validation dataset from TFRecord file.
-        val_dataset = chiron.load_tfrecord(args.val_file)
-
-        # Prepare validation data.
         val_dataset = prepare_dataset(
-            val_dataset,
+            chiron.load_tfrecord(args.val_file),
             label_mapper,
-            one_hot_encoder,
             image_size,
             global_batch_size,
             whitener,
         )
-
     else:
         val_dataset = None
 
-    # Define callbacks.
-    callbacks = [
-        chiron.Triangular2CLR(
-            config["base_lr"], config["max_lr"], config["clr_step_size"]
-        ),
+    early_stopping = (
         tf.keras.callbacks.EarlyStopping(
-            monitor="loss",
-            patience=config["early_stopping_patience"],
-            verbose=1,
+            patience=config["early_stopping_patience"], verbose=1
         ),
+    )
+
+    weights_file = os.path.join(weights_dir, chiron.get_weights_path())
+
+    callbacks = [
+        tf.keras.callbacks.ReduceLROnPlateau(
+            patience=config["reduce_lr_patience"], verbose=1
+        ),
+        early_stopping,
         tf.keras.callbacks.ModelCheckpoint(
-            os.path.join(weights_dir, "epoch-{epoch:04}"),
-            save_weights_only=True,
-            save_freq="epoch",
-            period=config["save_interval"],
+            weights_file, save_weights_only=True, period=config["save_period"]
         ),
-        chiron.TensorBoardNamedLogs(exclude_names=["lr"], log_dir=log_dir),
-        chiron.TensorBoardLearningRate(log_dir=log_dir, update_freq=1),
-        chiron.SilentTerminateOnNaN(),
+        tf.keras.callbacks.TensorBoard(log_dir=log_dir),
     ]
 
     try:
-        # Train model.
         model.fit(
             x=train_dataset,
             epochs=config["num_epochs"],
@@ -228,8 +172,9 @@ def main():
             validation_data=val_dataset,
         )
     except KeyboardInterrupt:
-        # Allow interruption.
         pass
+
+    model.save_weights(weights_file.format(epoch=early_stopping.stopped_epoch))
 
 
 if __name__ == "__main__":
