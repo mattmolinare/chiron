@@ -4,7 +4,9 @@ import tensorflow_hub as hub
 
 @tf.keras.utils.register_keras_serializable()
 class KerasLayer(hub.KerasLayer):
-    pass
+    @tf.autograph.experimental.do_not_convert
+    def call(self, *args, **kwargs):
+        return super().call(*args, **kwargs)
 
 
 def get_model(num_classes, regularizer=None):
