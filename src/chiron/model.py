@@ -1,8 +1,6 @@
 import tensorflow as tf
 import tensorflow_hub as hub
 
-__all__ = ["get_model"]
-
 
 @tf.keras.utils.register_keras_serializable()
 class KerasLayer(hub.KerasLayer):

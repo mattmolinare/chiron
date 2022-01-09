@@ -4,17 +4,6 @@ import functools
 import numpy as np
 import tensorflow as tf
 
-__all__ = [
-    "TensorBoardLearningRate",
-    "TensorBoardNamedLogs",
-    "ProgbarLoggerNamedLogs",
-    "SilentTerminateOnNaN",
-    "LearningRateFinder",
-    "TriangularCLR",
-    "Triangular2CLR",
-    "ExponentialCLR",
-]
-
 
 class DecoratorMeta(type):
 
@@ -186,6 +175,11 @@ class LearningRateFinder(tf.keras.callbacks.Callback):
             and "loss" in self.monitor
         )
         self.monitor_op = np.less if self.minimize else np.greater
+        self.step = None
+        self.lr = None
+        self.mean_value = None
+        self.best_value = None
+        self.history = None
 
     def get_lr(self, step):
         if step > self.max_steps:
@@ -242,6 +236,9 @@ class CLR(tf.keras.callbacks.Callback, abc.ABC):
         self.base_lr = base_lr
         self.max_lr = max_lr
         self.step_size = step_size
+        self.step = None
+        self.cycle = None
+        self.lr = None
 
     def get_cycle(self, step):
         return int(1 + step / (2 * self.step_size))
@@ -294,3 +291,20 @@ class ExponentialCLR(CLR):
 
     def get_scale(self, step, cycle):
         return self.gamma ** step
+
+
+class Counter(tf.keras.callbacks.Callback):
+    def __init__(self):
+        super().__init__()
+        self.epoch = None
+        self.batch = None
+
+    def on_train_begin(self, logs=None):
+        self.epoch = 0
+        self.batch = 0
+
+    def on_train_batch_end(self, batch, logs=None):
+        self.batch += 1
+
+    def on_train_epoch_end(self, epoch, logs=None):
+        self.epoch += 1

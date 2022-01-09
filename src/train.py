@@ -12,11 +12,12 @@ def parse_args():
         "config_file", help="Path to training configuration YAML file"
     )
     parser.add_argument(
-        "train_file", help="Path to training dataset TFRecord file"
+        "train_files", nargs="+", help="Path to training dataset TFRecord file"
     )
     parser.add_argument("output_dir", help="Path to output directory")
     parser.add_argument(
-        "--val_file",
+        "--val_files",
+        nargs="+",
         default=None,
         help="Path to validation dataset TFRecord file",
     )
@@ -31,7 +32,7 @@ def parse_args():
 
 
 def parse_config_file(filename):
-    config = chiron.load_yaml(filename)
+    config = chiron.utils.load_yaml(filename)
     class_labels = []
     label_map = {}
     for class_index, class_config in enumerate(config["classes"]):
@@ -48,17 +49,22 @@ def parse_config_file(filename):
     return config
 
 
-def prepare_dataset(dataset, label_mapper, image_size, batch_size, whitener):
+def preprocess_data(dataset, label_mapper, image_size, batch_size):
     return (
         dataset.map(label_mapper, num_parallel_calls=tf.data.AUTOTUNE)
-        .map(chiron.Resizer(image_size), num_parallel_calls=tf.data.AUTOTUNE)
-        .map(chiron.Repeater(3, axis=2), num_parallel_calls=tf.data.AUTOTUNE)
         .map(
-            chiron.ShapeSetter(image_size + [3]),
+            chiron.preprocessing.Resizer(image_size),
             num_parallel_calls=tf.data.AUTOTUNE,
         )
         .batch(batch_size)
-        .map(whitener, num_parallel_calls=tf.data.AUTOTUNE)
+        .map(
+            chiron.preprocessing.PerImageStandardizer(),
+            num_parallel_calls=tf.data.AUTOTUNE,
+        )
+        .map(
+            chiron.preprocessing.GrayscaleToRgb(),
+            num_parallel_calls=tf.data.AUTOTUNE,
+        )
         .prefetch(tf.data.AUTOTUNE)
     )
 
@@ -79,11 +85,11 @@ def main():
 
     devices = args.devices
     if devices is not None:
-        chiron.set_visible_gpus(*devices)
+        chiron.utils.set_visible_gpus(*devices)
 
     config = parse_config_file(args.config_file)
 
-    chiron.save_yaml(os.path.join(output_dir, "config.yaml"), config)
+    chiron.utils.save_yaml(os.path.join(output_dir, "config.yaml"), config)
 
     reg_scale = config.get("reg_scale")
     regularizer = (
@@ -93,15 +99,13 @@ def main():
     image_size = tf.TensorShape(config["image_size"])
     input_shape = [None] + image_size + [3]
 
-    strategy = chiron.get_distribution_strategy()
+    strategy = chiron.utils.get_distribution_strategy()
 
     with strategy.scope():
 
-        model = chiron.get_model(
+        model = chiron.model.get_model(
             config["num_classes"], regularizer=regularizer
         )
-
-        chiron.save_model(os.path.join(output_dir, "model.json"), model)
 
         model.compile(
             optimizer=tf.keras.optimizers.Adam(learning_rate=config["lr"]),
@@ -109,55 +113,49 @@ def main():
                 from_logits=True
             ),
             metrics=["accuracy"],
-            run_eagerly=config["run_eagerly"],
         )
 
         model.build(input_shape)
 
-    train_dataset = chiron.load_tfrecord(args.train_file)
+    chiron.utils.save_model(os.path.join(output_dir, "model.json"), model)
 
-    shuffle_buffer_size = config["shuffle_buffer_size"]
+    train_dataset = chiron.tfrecord.load_tfrecord(args.train_files)
+
+    shuffle_buffer_size = config.get("shuffle_buffer_size")
     if shuffle_buffer_size is not None:
         train_dataset = train_dataset.shuffle(
             shuffle_buffer_size, seed=config.get("shuffle_seed")
         )
 
-    label_mapper = chiron.LabelMapper(config["label_map"])
+    label_mapper = chiron.preprocessing.LabelMapper(config["label_map"])
 
     global_batch_size = (
         config["batch_size_per_device"] * strategy.num_replicas_in_sync
     )
 
-    whitener = chiron.PerImageStandardWhitener()
-
-    train_dataset = prepare_dataset(
-        train_dataset, label_mapper, image_size, global_batch_size, whitener
+    train_dataset = preprocess_data(
+        train_dataset, label_mapper, image_size, global_batch_size
     )
 
-    if args.val_file is not None:
-        val_dataset = prepare_dataset(
-            chiron.load_tfrecord(args.val_file),
+    if args.val_files is not None:
+        val_dataset = preprocess_data(
+            chiron.tfrecord.load_tfrecord(args.val_files),
             label_mapper,
             image_size,
             global_batch_size,
-            whitener,
         )
     else:
         val_dataset = None
 
-    early_stopping = (
-        tf.keras.callbacks.EarlyStopping(
-            patience=config["early_stopping_patience"], verbose=1
-        ),
-    )
-
-    weights_file = os.path.join(weights_dir, chiron.get_weights_path())
+    weights_file = os.path.join(weights_dir, chiron.utils.get_weights_path())
 
     callbacks = [
         tf.keras.callbacks.ReduceLROnPlateau(
             patience=config["reduce_lr_patience"], verbose=1
         ),
-        early_stopping,
+        tf.keras.callbacks.EarlyStopping(
+            patience=config["early_stopping_patience"], verbose=1
+        ),
         tf.keras.callbacks.ModelCheckpoint(
             weights_file, save_weights_only=True, period=config["save_period"]
         ),
@@ -174,7 +172,9 @@ def main():
     except KeyboardInterrupt:
         pass
 
-    model.save_weights(weights_file.format(epoch=early_stopping.stopped_epoch))
+    model.save_weights(
+        weights_file.format(epoch=len(model.history.history["loss"]))
+    )
 
 
 if __name__ == "__main__":

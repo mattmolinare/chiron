@@ -1,19 +1,8 @@
 import json
+import tkinter as tk
 
 import tensorflow as tf
 import yaml
-
-__all__ = [
-    "set_visible_gpus",
-    "get_distribution_strategy",
-    "convert_to_tensor",
-    "HashTable",
-    "save_yaml",
-    "load_yaml",
-    "save_model",
-    "load_model",
-    "get_weights_path",
-]
 
 
 def set_visible_gpus(*indices):
@@ -116,3 +105,17 @@ def load_model(filename):
 
 def get_weights_path():
     return "epoch-{epoch:04d}"
+
+
+def standardize(x, axis=None):
+    """Standardize data along given axis."""
+    if axis is None:
+        axis = tf.range(tf.rank(x))
+    x_mean, x_var = tf.nn.moments(x, axis, keepdims=True)
+    return tf.math.divide_no_nan(x - x_mean, tf.sqrt(tf.maximum(x_var, 0.0)))
+
+
+def min_max_scale(x, axis=None):
+    """Scale data to range 0 to 1 along given axis."""
+    x = x - tf.reduce_min(x, axis=axis, keepdims=True)
+    return tf.math.divide_no_nan(x, tf.reduce_max(x, axis=axis, keepdims=True))

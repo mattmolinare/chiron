@@ -1,20 +1,9 @@
 import abc
 
 import tensorflow as tf
+from numpy import vectorize
 
 from . import utils
-
-__all__ = [
-    "LabelMapper",
-    "OneHotEncoder",
-    "IdentityWhitener",
-    "StandardWhitener",
-    "PerBatchStandardWhitener",
-    "PerImageStandardWhitener",
-    "Resizer",
-    "Repeater",
-    "ShapeSetter",
-]
 
 
 class TargetTransformer(abc.ABC):
@@ -22,14 +11,13 @@ class TargetTransformer(abc.ABC):
 
     Parameters
     ----------
-    elementwise : bool, optional
-        If `True`, transform each element in the target data structure. Default
-        is `False`.
-
+    apply_elementwise : bool, optional
+        If `True`, apply transformation to each element in `targets` data
+        structure. Default is `False`.
     """
 
-    def __init__(self, elementwise=False):
-        self.elementwise = elementwise
+    def __init__(self, apply_elementwise=False):
+        self.apply_elementwise = apply_elementwise
 
     @abc.abstractmethod
     def _transform_op(self, targets):
@@ -43,7 +31,7 @@ class TargetTransformer(abc.ABC):
         `extra_args` are passed through.
         """
         *extra_args, targets = args
-        if self.elementwise:
+        if self.apply_elementwise:
             targets = tf.nest.map_structure(self._transform_op, targets)
         else:
             targets = self._transform_op(targets)
@@ -51,10 +39,15 @@ class TargetTransformer(abc.ABC):
 
 
 class LabelMapper(TargetTransformer):
-    """Map labels to class indices."""
+    """Label mapper.
 
-    def __init__(self, label_map, default_class_index=None, elementwise=False):
-        super().__init__(elementwise=elementwise)
+    Map class labels to class indices.
+    """
+
+    def __init__(
+        self, label_map, default_class_index=None, apply_elementwise=False
+    ):
+        super().__init__(apply_elementwise=apply_elementwise)
         if default_class_index is None:
             default_class_index = -1
             assert_in_table = True
@@ -69,10 +62,13 @@ class LabelMapper(TargetTransformer):
 
 
 class OneHotEncoder(TargetTransformer):
-    """One-hot encode class indices."""
+    """One-hot encoder.
 
-    def __init__(self, num_classes, elementwise=False):
-        super().__init__(elementwise=elementwise)
+    One-hot encode class indices.
+    """
+
+    def __init__(self, num_classes, apply_elementwise=False):
+        super().__init__(apply_elementwise=apply_elementwise)
         self.num_classes = num_classes
 
     def _transform_op(self, target):
@@ -80,124 +76,216 @@ class OneHotEncoder(TargetTransformer):
 
 
 class ImageTransformer(abc.ABC):
-    """Image transformer."""
+    """Image transformer.
+
+    Parameters
+    ----------
+    vectorize : bool, optional
+        If `True`, apply transformation to each element unstacked on axis 0 of
+        `images` tensor. Default is `False`.
+    """
+
+    def __init__(self, vectorize=False):
+        self.vectorize = vectorize
 
     @abc.abstractmethod
     def _transform_op(self, images):
         pass
 
+    @tf.function
     def __call__(self, images, *extra_args):
         """Transform image data.
 
         Additional parameters `extra_args` are passed through.
         """
-        images = self._transform_op(images)
+        if self.vectorize:
+            images = tf.map_fn(self._transform_op, images)
+        else:
+            images = self._transform_op(images)
         return (images, *extra_args) if extra_args else images
 
 
-class BaseWhitener(ImageTransformer):
-    """Base image whitener."""
+class Whitener(ImageTransformer):
+    """Image whitener."""
+
+    def __init__(self, axis=None):
+        super().__init__(vectorize=False)
+        self.axis = axis
 
     def _transform_op(self, images):
-        return self._whitening_op(images)
+        return self._whitening_op(images, self.axis)
 
     @abc.abstractmethod
-    def _whitening_op(self, images):
+    def _whitening_op(self, images, axis):
         pass
 
 
-class IdentityWhitener(BaseWhitener):
-    """Identity whitener."""
+class PerBatchWhitener(Whitener):
+    """Per-batch whitener."""
+
+    def __init__(self):
+        super().__init__(axis=[-4, -3, -2])
+
+
+class PerImageWhitener(Whitener):
+    """Per-image whitener."""
+
+    def __init__(self):
+        super().__init__(axis=[-3, -2])
+
+
+class Standardizer(Whitener):
+    """Standardizer.
+
+    Scale image to zero mean and unit variance.
+    """
 
     @staticmethod
-    def _whitening_op(images):
-        return images
+    def _whitening_op(images, axis):
+        return utils.standardize(images, axis=axis)
 
 
-def _get_axes(x, axes):
-    return tf.range(tf.rank(x)) if axes is None else axes
+class PerBatchStandardizer(PerBatchWhitener, Standardizer):
+    """Per-batch standardizer."""
 
 
-def standardize(x, axes=None):
-    """Standardize data along given axes."""
-    axes = _get_axes(x, axes)
-    x_mean, x_var = tf.nn.moments(x, axes, keepdims=True)
-    return tf.math.divide_no_nan(x - x_mean, tf.sqrt(tf.maximum(x_var, 0.0)))
+class PerImageStandardizer(PerImageWhitener, Standardizer):
+    """Per-image standardizer."""
 
 
-class StandardWhitener(BaseWhitener):
-    """Standard whitener."""
+class MinMaxScaler(Whitener):
+    """Min-max scaler.
 
-    def __init__(self, axes=None):
-        self.axes = axes
+    Scale image to range 0 to 1.
+    """
 
-    def _whitening_op(self, images):
-        return standardize(images, axes=self.axes)
-
-
-class PerBatchStandardWhitener(StandardWhitener):
-    """Per-batch standard whitener."""
-
-    def __init__(self):
-        super().__init__(axes=[0, 1, 2])
+    @staticmethod
+    def _whitening_op(images, axis):
+        return utils.min_max_scale(images, axis=axis)
 
 
-class PerImageStandardWhitener(StandardWhitener):
-    """Per-image standard whitener."""
-
-    def __init__(self):
-        super().__init__(axes=[1, 2])
+class PerBatchMinMaxScaler(PerBatchWhitener, MinMaxScaler):
+    """Per-batch min-max scaler."""
 
 
-def min_max_scale(x, axes=None):
-    axes = _get_axes(x, axes)
-    x = x - tf.reduce_min(x, axis=axes, keepdims=True)
-    return tf.math.divide_no_nan(x, tf.reduce_max(x, axis=axes, keepdims=True))
-
-
-class MinMaxWhitener(BaseWhitener):
-    """Min-max whitener."""
-
-    def __init__(self, axes=None):
-        self.axes = axes
-
-    def _whitening_op(self, images):
-        return min_max_scale(images, axes=self.axes)
-
-
-class Discretizer(MinMaxWhitener):
-    """0 to 255 discretizer."""
-
-    def _whitening_op(self, images):
-        return tf.round(super()._whitening_op(images) * 255)
+class PerImageMinMaxScaler(PerImageWhitener, MinMaxScaler):
+    """Per-image min-max scaler."""
 
 
 class Resizer(ImageTransformer):
     """Image resizer."""
 
     def __init__(self, size):
+        super().__init__(vectorize=False)
         self.size = size
 
     def _transform_op(self, images):
         return tf.image.resize(images, self.size)
 
 
-class Repeater(ImageTransformer):
-    """Image repeater."""
+class GrayscaleToRgb(ImageTransformer):
+    """Grayscale to RGB converter."""
 
-    def __init__(self, repeats, axis=-1):
-        self.repeats = repeats
-        self.axis = axis
+    def __init__(self):
+        super().__init__(vectorize=False)
 
-    def _transform_op(self, images):
-        return tf.repeat(images, self.repeats, axis=self.axis)
+    @staticmethod
+    def _transform_op(images):
+        return tf.image.grayscale_to_rgb(images)
 
 
 class ShapeSetter(ImageTransformer):
     """Image shape setter."""
 
     def __init__(self, shape):
+        super().__init__(vectorize=False)
         self.shape = shape
 
     def _transform_op(self, images):
         return tf.ensure_shape(images, self.shape)
+
+
+class ConvertImageDtype(ImageTransformer):
+    """Convert image data type."""
+
+    def __init__(self, dtype, saturate=False):
+        super().__init__(vectorize=False)
+        self.dtype = dtype
+        self.saturate = saturate
+
+    def _transform_op(self, images):
+        return tf.image.convert_image_dtype(
+            images, self.dtype, saturate=self.saturate
+        )
+
+
+class RandomJpegQuality(ImageTransformer):
+    """Randomly change jpeg encoding quality."""
+
+    def __init__(self, min_quality, max_quality, vectorize=False):
+        super().__init__(vectorize=vectorize)
+        self.min_quality = min_quality
+        self.max_quality = max_quality
+
+    @tf.function
+    def _transform_op(self, images):
+        return tf.image.random_jpeg_quality(
+            images, self.min_quality, self.max_quality
+        )
+
+
+class RandomBrightness(ImageTransformer):
+    """Adjust image brightness by random factor."""
+
+    def __init__(self, max_delta):
+        super().__init__(vectorize=False)
+        self.max_delta = max_delta
+
+    def _transform_op(self, images):
+        return tf.image.random_brightness(images, self.max_delta)
+
+
+class RandomContrast(ImageTransformer):
+    """Adjust image contrast by random factor."""
+
+    def __init__(self, lower, upper):
+        super().__init__(vectorize=False)
+        self.lower = lower
+        self.upper = upper
+
+    def _transform_op(self, images):
+        return tf.image.random_contrast(images, self.lower, self.upper)
+
+
+class RandomRot90(ImageTransformer):
+    """Rotate image by 90 degrees some random number of times."""
+
+    def __init__(self):
+        super().__init__(vectorize=False)
+
+    def _transform_op(self, images):
+        return tf.image.rot90(
+            images, tf.random.uniform([], minval=0, maxval=4, dtype=tf.int32)
+        )
+
+
+class RandomFlipLeftRight(ImageTransformer):
+    """Randomly flip image horizontally."""
+
+    def __init__(self):
+        super().__init__(vectorize=False)
+
+    @staticmethod
+    def _transform_op(images):
+        return tf.image.random_flip_left_right(images)
+
+
+class RandomFlipUpDown(ImageTransformer):
+    """Randomly flip image vertically."""
+
+    def __init__(self):
+        super().__init__(vectorize=False)
+
+    @staticmethod
+    def _transform_op(images):
+        return tf.image.random_flip_up_down(images)

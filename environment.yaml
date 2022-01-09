@@ -4,7 +4,9 @@ channels:
   - conda-forge
 dependencies:
   - black-jupyter
+  - boto3
   - isort
+  - kaggle
   - matplotlib
   - notebook
   - numpy
@@ -14,7 +16,7 @@ dependencies:
   - pre-commit
   - pylama
   - pylint
-  - python
+  - python=3.8
   - pyyaml
   - scikit-learn
   - tensorflow-gpu
@@ -22,3 +24,6 @@ dependencies:
   - tensorflow-hub=0.12.0
   - pip:
       - commitizen
+variables:
+  KAGGLE_USERNAME: mattmolinare
+  KAGGLE_KEY: f597cadbd1e2c019a0ce73a49cbbad63

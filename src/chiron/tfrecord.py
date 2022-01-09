@@ -1,9 +1,5 @@
 import tensorflow as tf
 
-from . import preprocessing
-
-__all__ = ["load_tfrecord", "save_tfrecord"]
-
 
 def _bytes_feature(value):
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
@@ -39,7 +35,7 @@ def save_tfrecord(filename, generator):
 
 
 @tf.autograph.experimental.do_not_convert
-def parser(serialized):
+def _parser(serialized):
     """Parse image data."""
     features = {
         "image": tf.io.FixedLenFeature([], tf.string),
@@ -66,4 +62,4 @@ def load_tfrecord(filenames):
         Dataset.
 
     """
-    return tf.data.TFRecordDataset(filenames).map(parser)
+    return tf.data.TFRecordDataset(filenames).map(_parser)

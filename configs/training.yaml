@@ -1,12 +1,11 @@
 image_size: [224, 224]
 num_epochs: 100
 batch_size_per_device: 32
-shuffle_buffer_size: 256
-lr: 0.0001
+shuffle_buffer_size: 1024
+lr: 0.00003
 reduce_lr_patience: 4
 early_stopping_patience: 16
 reg_scale: null
-run_eagerly: False
 save_period: 5
 classes:
   - label: meningioma
@@ -18,3 +17,6 @@ classes:
   - label: pituitary
     orig_labels:
       - pituitary
+  - label: notumor
+    orig_labels:
+      - notumor
