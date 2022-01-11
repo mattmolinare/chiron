@@ -291,20 +291,3 @@ class ExponentialCLR(CLR):
 
     def get_scale(self, step, cycle):
         return self.gamma ** step
-
-
-class Counter(tf.keras.callbacks.Callback):
-    def __init__(self):
-        super().__init__()
-        self.epoch = None
-        self.batch = None
-
-    def on_train_begin(self, logs=None):
-        self.epoch = 0
-        self.batch = 0
-
-    def on_train_batch_end(self, batch, logs=None):
-        self.batch += 1
-
-    def on_train_epoch_end(self, epoch, logs=None):
-        self.epoch += 1
