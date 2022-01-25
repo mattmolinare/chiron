@@ -1,18 +1,18 @@
 # Chiron
 
-Source code for classification of brain tumors in MRI data using EfficientNetV2 architecture pre-trained on ImageNet 1k dataset.
+Source code for classification of brain tumors in MRI data using EfficientNetV2 architecture pretrained on ImageNet 1k dataset.
 
 ## Getting started
 
 ### Downloading the data
 
-The dataset published Cheng et al. contains brain scans of patients with three type of tumors: meningioma, glioma, and pituitary[^cheng-et-al]. To download it, run the command
+Download the dataset published by Cheng et al. consisting brains with three types of tumors: meningioma, glioma, and pituitary[^cheng-et-al]
 
 ```
 (cd data/cheng-et-al && sh download.sh)
 ```
 
-[This](https://www.kaggle.com/masoudnickparvar/brain-tumor-mri-dataset) Kaggle datasets contains examples of brain scans of patients without tumors. Download it via
+Download [this](https://www.kaggle.com/masoudnickparvar/brain-tumor-mri-dataset) Kaggle dataset consisting of brains without tumors
 
 ```
 (cd data/kaggle && sh download.sh)
